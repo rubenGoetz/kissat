@@ -52,7 +52,7 @@ void kissat_write_profile (kissat *solver, const char *path);
 // Sets a function to be called whenever kissat learns a clause no longer than the specified max. size.
 // The function is called with the provided state and the size and glue value of the learnt clause.
 // The clause itself is stored in the provided buffer before the function is called.
-void kissat_set_clause_export_callback (kissat * solver, void *state, int *buffer, unsigned max_size, void (*consume) (void *state, int size, int glue));
+void kissat_set_clause_export_callback (kissat * solver, void *state, int *buffer, unsigned max_size, void (*consume) (void *state, int size, int glue, unsigned long id));
 
 // Sets a function which kissat may call to import a clause from another solver. The function is called
 // with the provided state and expects a literal buffer (or zero), the clause size, and the glue value as out parameters.
@@ -83,5 +83,8 @@ void kissat_trace_proof_internally (kissat * solver, void *state,
     void (*on_drup_derivation) (void* state, const int* lits, int nbLits, int glue),
     void (*on_lrup_import)     (void* state, unsigned long id, const int* lits, int nbLits, const unsigned char* sigData),
     void (*on_drup_deletion)   (void* state, const int* lits, int nbLits));
+
+void kissat_trace_palrup_internally (kissat * solver, int max_num_solvers, int solver_rank, int num_orig_clauses, const char * path);
+void kissat_close_palrup_internally (kissat * solver);
 
 #endif

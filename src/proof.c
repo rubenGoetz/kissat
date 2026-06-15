@@ -5,6 +5,7 @@
 #include "error.h"
 #include "file.h"
 #include "inline.h"
+#include "clauseexport.h"
 
 #undef NDEBUG
 
@@ -31,6 +32,8 @@ struct proof {
   uint64_t deleted;
   uint64_t lines;
   uint64_t literals;
+  uint64_t num_solvers;
+  uint64_t solver_id;
 #ifndef NDEBUG
   bool empty;
   char *units;
@@ -72,6 +75,26 @@ void kissat_init_ext_proof (kissat *solver) {
   solver->proof = proof;
 }
 
+void kissat_init_palrup_proof (kissat *solver, int num_original_clauses, int max_num_solvers, int solver_rank, const char* path) {
+  assert (!solver->proof);
+  proof *proof = kissat_calloc (solver, 1, sizeof (struct proof));
+  proof->binary = true;
+
+  // create proof file
+  proof->file = kissat_calloc (solver, 1, sizeof (struct file));
+  kissat_open_to_write_file (proof->file, path);
+  
+  // init palrup id generation
+  proof->num_solvers = (uint64_t)(max_num_solvers);
+  proof->solver_id = (uint64_t)(solver_rank);
+  uint64_t next_id = (uint64_t)num_original_clauses;
+  solver->last_id = next_id - (next_id % proof->num_solvers) + proof->solver_id;
+
+  INIT_STACK (proof->line);
+  proof->solver = solver;
+  solver->proof = proof;
+}
+
 static void flush_buffer (proof *proof) {
   size_t bytes = proof->buffer.pos;
   if (!bytes)
@@ -95,6 +118,8 @@ void kissat_release_proof (kissat *solver) {
 #if !defined(NDEBUG) || defined(LOGGING)
   RELEASE_STACK (proof->imported);
 #endif
+  if (solver->last_id)
+    kissat_close_file (proof->file);
   kissat_free (solver, proof, sizeof (struct proof));
   solver->proof = 0;
 }
@@ -294,6 +319,53 @@ static void check_repeated_proof_lines (proof *proof) {
 
 #endif
 
+static uint64_t get_next_id (proof * proof) {
+    kissat* solver = proof->solver;
+
+    // ID calculation variables:
+    //    v         v      vialble IDs
+    // ---|----p----|--->  Integer space
+    //    |-o-|--t--|
+    //        s
+
+    uint64_t s = solver->last_id;
+    uint64_t o = 1 + s - solver->last_id;
+    uint64_t t = proof->num_solvers - (o % proof->num_solvers);
+    uint64_t next_id = solver->last_id + o + (t % proof->num_solvers);    // TODO: make more efficient?
+
+    assert(next_id > solver->last_id);
+    assert(next_id % proof->num_solvers == proof->solver_id);
+    solver->last_id = next_id;
+    return next_id;
+}
+
+static void
+print_binary_proof_id (proof * proof, uint64_t id)
+{
+  id *= 2;  // encode vbl sign with *2
+  assert(id > solver->last_id);
+  while (id & (~127UL)) {
+    write_char (proof, (id & 127UL) | 128);
+    id >>= 7;
+  }
+  write_char(proof, (unsigned char)id);
+}
+
+static void
+print_non_binary_proof_id (proof * proof, uint64_t id)
+{
+  char buffer[21];
+  char* ptr = buffer + 20;
+  *(ptr--) = 0;
+  for (; id; id /= 10)
+    *(ptr--) = '0' + (id % 10);
+
+  ptr++;
+  while (*ptr)
+    write_char (proof, *ptr++);
+  write_char (proof, ' ');
+}
+
 static void print_added_proof_line (proof *proof) {
   proof->added++;
 #ifdef LOGGING
@@ -305,7 +377,7 @@ static void print_added_proof_line (proof *proof) {
 #ifndef NDEBUG
   check_repeated_proof_lines (proof);
 #endif
-  if (proof->file == 0) {
+  if (proof->file == 0) {   // realtime proof checking
     proof->solver->on_drup_derivation (proof->solver->proof_log_state, BEGIN_STACK(proof->line), SIZE_STACK(proof->line), proof->solver->last_glue);
     proof->lines++;
     CLEAR_STACK (proof->line);
@@ -314,7 +386,18 @@ static void print_added_proof_line (proof *proof) {
 #endif
     return;
   }
-  if (proof->binary)
+  if (proof->solver->last_id) {   // palrup proof logging
+    // export clause
+    uint64_t id = get_next_id(proof);
+    kissat_export_externalized_redundant_clause(proof->solver, proof->solver->last_glue, SIZE_STACK(proof->line), BEGIN_STACK(proof->line));
+    write_char (proof, 'a');
+    if (proof->binary) {
+      print_binary_proof_id (proof, id);
+    } else {
+      write_char (proof, ' ');
+      print_non_binary_proof_id (proof, id);
+    }
+  } else if (proof->binary)
     write_char (proof, 'a');
   print_proof_line (proof);
 }
@@ -340,6 +423,30 @@ static void print_delete_proof_line (proof *proof) {
   if (!proof->binary)
     write_char (proof, ' ');
   print_proof_line (proof);
+}
+
+static void print_import_proof_line (proof *proof, uint64_t id) {
+  write_char (proof, 'i');
+  if (!proof->binary) {
+    write_char (proof, ' ');
+    print_non_binary_proof_id(proof, id);
+    write_char (proof, ' ');
+  } else
+    print_binary_proof_id(proof, id);
+  print_proof_line (proof);
+}
+
+void kissat_add_import_to_proof (kissat *solver, uint64_t id, size_t size, const int* lits) {
+  proof *proof = solver->proof;
+  assert(solver->last_id);
+  assert (EMPTY_STACK (proof->line));
+  assert (size <= UINT_MAX);
+  assert (size > 0);
+
+  for (size_t i = 0; i < size; i++)
+    PUSH_STACK(proof->line, lits[i]);
+  print_import_proof_line (proof, id);
+  assert (EMPTY_STACK (proof->line));
 }
 
 void kissat_add_binary_to_proof (kissat *solver, unsigned a, unsigned b) {

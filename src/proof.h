@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct kissat kissat;
 typedef struct proof proof;
@@ -14,6 +15,7 @@ struct file;
 
 void kissat_init_proof (struct kissat *, struct file *, bool binary);
 void kissat_init_ext_proof (struct kissat *);
+void kissat_init_palrup_proof (kissat *solver, int num_original_clauses, int max_num_solvers, int solver_rank, const char* path);
 void kissat_release_proof (struct kissat *);
 
 #ifndef QUIET
@@ -56,6 +58,8 @@ void kissat_delete_internal_from_proof (struct kissat *, size_t,
     if (solver->proof) \
       kissat_add_clause_to_proof (solver, (CLAUSE)); \
   } while (0)
+
+void kissat_add_import_to_proof (kissat *solver, uint64_t id, size_t size, const int* lits);
 
 #define ADD_EMPTY_TO_PROOF() \
   do { \

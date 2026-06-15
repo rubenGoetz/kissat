@@ -245,14 +245,17 @@ struct kissat {
   void (*on_drup_derivation) (void* state, const int* lits, int nbLits, int glue);
   void (*on_lrup_import)     (void* state, unsigned long id, const int* lits, int nbLits, const unsigned char* sigData);
   void (*on_drup_deletion)   (void* state, const int* lits, int nbLits);
+
+  bool palrup;
 #endif
 
   // Clause export
   void *consume_clause_state;
   int *consume_clause_buffer;
   unsigned consume_clause_max_size;
-  void (*consume_clause) (void *state, int size, int glue);
+  void (*consume_clause) (void *state, int size, int glue, uint64_t id);
   unsigned last_glue;
+  uint64_t last_id;
   
   // Clause import
   void *produce_clause_state;

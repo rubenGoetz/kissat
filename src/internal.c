@@ -575,7 +575,7 @@ int kissat_value (kissat *solver, int elit) {
   return tmp < 0 ? -elit : elit;
 }
 
-void kissat_set_clause_export_callback (kissat * solver, void *state, int *buffer, unsigned max_size, void (*consume) (void* state, int size, int glue)) 
+void kissat_set_clause_export_callback (kissat * solver, void *state, int *buffer, unsigned max_size, void (*consume) (void* state, int size, int glue, uint64_t id)) 
 {
   solver->consume_clause_state = state;
   solver->consume_clause_buffer = buffer;
@@ -635,6 +635,17 @@ void kissat_trace_proof_internally (kissat * solver, void *state,
 #endif
 }
 
+void kissat_trace_palrup_internally (kissat * solver, int max_num_solvers, int solver_rank, int num_orig_clauses, const char * path)
+{
+  solver->palrup = true;
+  kissat_init_palrup_proof(solver, num_orig_clauses, max_num_solvers, solver_rank, path);
+}
+
+void kissat_close_palrup_internally (kissat * solver)
+{
+  kissat_release_proof (solver);
+}
+
 bool kissat_importing_redundant_clauses (kissat * solver) 
 {
   if (solver->produce_clause == 0) return false;
@@ -653,6 +664,10 @@ void kissat_import_redundant_clauses (kissat * solver)
   unsigned char sig[16];
   ints simplified_clause;
   INIT_STACK(simplified_clause);
+#ifndef NPROOFS
+  ints original_clause;
+  INIT_STACK(original_clause);
+#endif
   solver->num_conflicts_at_last_import = solver->statistics.conflicts;
 
   while (true) {
@@ -669,17 +684,23 @@ void kissat_import_redundant_clauses (kissat * solver)
     // Analyze each of the literals
     bool okToImport = true;
     CLEAR_STACK(simplified_clause);
+#ifndef NPROOFS
+    CLEAR_STACK(original_clause);
+#endif
 
     for (unsigned i = 0; i < (unsigned)size; i++) {
       int elit = buffer[i];
+#ifndef NPROOFS
+      PUSH_STACK(original_clause, elit);
+#endif
       if (!VALID_EXTERNAL_LITERAL (elit)) {
-	solver->r_ed++;
+	      solver->r_ed++;
         okToImport = false;
         break;
       }
       const unsigned ilit = kissat_import_literal (solver, elit);
       if (!VALID_INTERNAL_LITERAL (ilit)) {
-	solver->r_ed++;
+	      solver->r_ed++;
         okToImport = false;
         break;
       }
@@ -694,6 +715,7 @@ void kissat_import_redundant_clauses (kissat * solver)
           break;
         } else if (value < 0) {
           // Literal is fixed as negated: drop this literal
+          // TODO: is this necessary? we could use the unmodified buffer for the padrup logging
           buffer[i] = 0;
         } else {
           // Fixed, but neither positive nor negated? Drop clause to be safe
@@ -738,7 +760,10 @@ void kissat_import_redundant_clauses (kissat * solver)
 
 #ifndef NPROOFS
     // Import the *original* (non shortened) clause to the proof interface
-    if (solver->proof) solver->on_lrup_import (solver->proof_log_state, id, buffer, originalSize, sig);
+    if (solver->proof) {
+      if (solver->palrup) kissat_add_import_to_proof(solver, id, SIZE_STACK(original_clause), BEGIN_STACK(original_clause));
+      else solver->on_lrup_import (solver->proof_log_state, id, buffer, originalSize, sig);
+    }
 #endif
 
     if (effectiveSize == 1) {
@@ -757,7 +782,7 @@ void kissat_import_redundant_clauses (kissat * solver)
       // If the unit was simplified from a larger clause, we need to explicitly derive the unit
       // on the basis of the imported clause and then immediately delete the original clause
       // since the solver doesn't remember it either.
-      if (simplified && solver->proof) {
+      if (simplified && solver->proof && !solver->palrup) {
         solver->on_drup_derivation (solver->proof_log_state, &elit, 1, glue);
         solver->on_drup_deletion (solver->proof_log_state, buffer, originalSize);
       }
@@ -790,7 +815,7 @@ void kissat_import_redundant_clauses (kissat * solver)
 #ifndef NPROOFS
     // If the clause was simplified from a larger clause, we need to immediately delete
     // the original clause since the solver doesn't remember it either.
-    if (simplified && solver->proof) solver->on_drup_deletion (solver->proof_log_state, buffer, originalSize);
+    if (simplified && solver->proof && !solver->palrup) solver->on_drup_deletion (solver->proof_log_state, buffer, originalSize);
 #endif
 
     if (ref != INVALID_REF) {
