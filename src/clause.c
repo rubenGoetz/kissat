@@ -168,7 +168,7 @@ kissat_new_redundant_clause (kissat * solver, unsigned glue)
 reference
 kissat_new_redundant_clause_from_import (kissat * solver, unsigned glue)
 {
-  return new_redundant_clause (solver, glue, solver->palrup);
+  return new_redundant_clause (solver, glue, false);
 }
 
 static void mark_clause_as_garbage (kissat *solver, clause *c) {
