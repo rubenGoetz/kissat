@@ -256,6 +256,7 @@ struct kissat {
   void (*consume_clause) (void *state, int size, int glue, uint64_t id);
   unsigned last_glue;
   uint64_t last_id;
+  uint64_t max_import_id;
   
   // Clause import
   void *produce_clause_state;

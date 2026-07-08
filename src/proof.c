@@ -328,7 +328,7 @@ static uint64_t get_next_id (proof * proof) {
     //    |-o-|--t--|
     //        s
 
-    uint64_t s = solver->last_id;
+    uint64_t s = solver->max_import_id > solver->last_id ? solver->max_import_id : solver->last_id;
     uint64_t o = 1 + s - solver->last_id;
     uint64_t t = proof->num_solvers - (o % proof->num_solvers);
     uint64_t next_id = solver->last_id + o + (t % proof->num_solvers);    // TODO: make more efficient?

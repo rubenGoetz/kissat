@@ -761,7 +761,7 @@ void kissat_import_redundant_clauses (kissat * solver)
 #ifndef NPROOFS
     // Import the *original* (non shortened) clause to the proof interface
     if (solver->proof) {
-      if (id > solver->last_id) solver->last_id = id;
+      if (id > solver->max_import_id) solver->max_import_id = id;
       if (solver->palrup) kissat_add_import_to_proof(solver, id, SIZE_STACK(original_clause), BEGIN_STACK(original_clause));
       else solver->on_lrup_import (solver->proof_log_state, id, buffer, originalSize, sig);
     }
