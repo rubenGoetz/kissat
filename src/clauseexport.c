@@ -22,6 +22,7 @@ void kissat_export_redundant_clause (kissat * solver, unsigned glue, unsigned si
 void kissat_export_externalized_redundant_clause (kissat * solver, unsigned glue, unsigned size, unsigned *lits) {
   if (!solver->consume_clause) return;
   if (size > solver->consume_clause_max_size) return;
+  if (!size) return;
   glue = MAX(glue, 1);
   glue = MIN(glue, size-1);
   // lits are already externalized. Also keep space in buffer to write id.
