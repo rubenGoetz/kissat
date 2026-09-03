@@ -16,10 +16,10 @@ void kissat_export_redundant_clause (kissat * solver, unsigned glue, unsigned si
     const int elit = kissat_export_literal (solver, ilit);
     solver->consume_clause_buffer[i] = elit;
   }
-  solver->consume_clause (solver->consume_clause_state, size, glue, NULL);
+  solver->consume_clause (solver->consume_clause_state, size, glue, 0);
 }
 
-void kissat_export_externalized_redundant_clause (kissat * solver, unsigned glue, unsigned size, unsigned *lits) {
+void kissat_export_externalized_redundant_clause (kissat * solver, unsigned glue, unsigned size, int *lits) {
   if (!solver->consume_clause) return;
   if (size > solver->consume_clause_max_size) return;
   if (!size) return;
