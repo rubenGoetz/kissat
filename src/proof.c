@@ -6,6 +6,7 @@
 #include "file.h"
 #include "inline.h"
 #include "clauseexport.h"
+#include <threads.h>
 
 #undef NDEBUG
 
@@ -18,6 +19,7 @@
 struct write_buffer {
   unsigned char chars[size_buffer];
   size_t pos;
+  mtx_t lock;
 };
 
 typedef struct write_buffer write_buffer;
@@ -91,6 +93,7 @@ void kissat_init_palrup_proof (kissat *solver, int num_original_clauses, int max
   solver->last_id = next_id - (next_id % proof->num_solvers) + proof->solver_id;
 
   INIT_STACK (proof->line);
+  mtx_init(&(proof->buffer.lock), mtx_plain);
   proof->solver = solver;
   solver->proof = proof;
 }
@@ -109,6 +112,10 @@ void kissat_release_proof (kissat *solver) {
   proof *proof = solver->proof;
   assert (proof);
   LOG ("stopping to trace proof");
+  mtx_lock(&(proof->buffer.lock));
+
+  if (solver->palrup)
+    assert(!proof->buffer.pos || proof->buffer.chars[proof->buffer.pos - 1] == 0);
   flush_buffer (proof);
   kissat_flush (proof->file);
   RELEASE_STACK (proof->line);
@@ -122,6 +129,9 @@ void kissat_release_proof (kissat *solver) {
     kissat_close_file (proof->file);
   kissat_free (solver, proof, sizeof (struct proof));
   solver->proof = 0;
+  
+  // never unlock mutex to block any further additions to proof
+  //mtx_unlock(&(proof->buffer.lock));
 }
 
 #ifndef QUIET
@@ -343,7 +353,6 @@ static void
 print_binary_proof_id (proof * proof, uint64_t id)
 {
   id *= 2;  // encode vbl sign with *2
-  assert(id > solver->last_id);
   while (id & (~127UL)) {
     write_char (proof, (id & 127UL) | 128);
     id >>= 7;
@@ -367,6 +376,7 @@ print_non_binary_proof_id (proof * proof, uint64_t id)
 }
 
 static void print_added_proof_line (proof *proof) {
+  mtx_lock(&(proof->buffer.lock));
   proof->added++;
 #ifdef LOGGING
   struct kissat *solver = proof->solver;
@@ -386,7 +396,7 @@ static void print_added_proof_line (proof *proof) {
 #endif
     return;
   }
-  if (proof->solver->last_id) {   // palrup proof logging
+  if (proof->solver->palrup) {
     // export clause
     uint64_t id = get_next_id(proof);
     kissat_export_externalized_redundant_clause(proof->solver, proof->solver->last_glue, SIZE_STACK(proof->line), BEGIN_STACK(proof->line));
@@ -400,9 +410,11 @@ static void print_added_proof_line (proof *proof) {
   } else if (proof->binary)
     write_char (proof, 'a');
   print_proof_line (proof);
+  mtx_unlock(&(proof->buffer.lock));
 }
 
 static void print_delete_proof_line (proof *proof) {
+  mtx_lock(&(proof->buffer.lock));
   proof->deleted++;
 #ifdef LOGGING
   struct kissat *solver = proof->solver;
@@ -423,9 +435,11 @@ static void print_delete_proof_line (proof *proof) {
   if (!proof->binary)
     write_char (proof, ' ');
   print_proof_line (proof);
+  mtx_unlock(&(proof->buffer.lock));
 }
 
 static void print_import_proof_line (proof *proof, uint64_t id) {
+  mtx_lock(&(proof->buffer.lock));
   write_char (proof, 'i');
   if (!proof->binary) {
     write_char (proof, ' ');
@@ -434,6 +448,7 @@ static void print_import_proof_line (proof *proof, uint64_t id) {
   } else
     print_binary_proof_id(proof, id);
   print_proof_line (proof);
+  mtx_unlock(&(proof->buffer.lock));
 }
 
 void kissat_add_import_to_proof (kissat *solver, uint64_t id, size_t size, const int* lits) {

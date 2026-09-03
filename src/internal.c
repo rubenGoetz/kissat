@@ -643,7 +643,9 @@ void kissat_trace_palrup_internally (kissat * solver, int max_num_solvers, int s
 
 void kissat_close_palrup_internally (kissat * solver)
 {
-  kissat_release_proof (solver);
+  assert(solver->palrup);
+  if (solver->proof)
+    kissat_release_proof (solver);
 }
 
 bool kissat_importing_redundant_clauses (kissat * solver) 
