@@ -128,7 +128,8 @@ void kissat_release_proof (kissat *solver) {
   if (solver->last_id)
     kissat_close_file (proof->file);
   kissat_free (solver, proof, sizeof (struct proof));
-  solver->proof = 0;
+  // Do not set proof to 0 since "if (solver->proof)"" is an important check during clause sharing
+  //solver->proof = 0;
   
   // never unlock mutex to block any further additions to proof
   //mtx_unlock(&(proof->buffer.lock));

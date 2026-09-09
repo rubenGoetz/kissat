@@ -29,5 +29,6 @@ void kissat_export_externalized_redundant_clause (kissat * solver, unsigned glue
   memcpy(solver->consume_clause_buffer + 2, lits, size * sizeof(int));
   // Execute learnt clause callback
   uint64_t id = solver->last_id;
+  assert(id > 0);
   solver->consume_clause (solver->consume_clause_state, size, glue, id);
 }
